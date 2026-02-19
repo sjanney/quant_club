@@ -104,14 +104,17 @@ You can run checks and scheduled paper trading in GitHub Actions (public repos a
 
 - CI checks: `.github/workflows/ci.yml`
 - Scheduled trading: `.github/workflows/scheduled_trading.yml`
+- Daily health-check (no trades): `.github/workflows/trading_healthcheck.yml`
 
 Set repository secrets:
 
 - `ALPACA_API_KEY`
 - `ALPACA_API_SECRET`
 - optional: `LOG_LEVEL`
+- optional: `DISCORD_WEBHOOK_URL` (free Discord trade/status notifications)
 
 Use **Actions → scheduled-trading → Run workflow** for manual runs/troubleshooting.
+Use **Actions → trading-healthcheck → Run workflow** to validate connectivity/signals without placing orders.
 
 ## 📊 Features
 

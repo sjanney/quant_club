@@ -35,6 +35,7 @@ from data.market_data import MarketDataProvider
 from strategies.rammageddon_strategy import RAMmageddonStrategy
 from core.order import OrderSide, OrderType
 from decimal import Decimal
+from monitoring.discord_notifier import send_discord_message
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,9 @@ def run_after_hours() -> bool:
         signals_snapshot=signals,
     )
     logger.info("After-hours analysis complete: %d orders scheduled", len(orders_payload))
+    send_discord_message(
+        f"After-hours analysis complete. Scheduled {len(orders_payload)} orders. Signals: {signals}"
+    )
     return True
 
 
@@ -158,6 +162,7 @@ def run_execute_at_open() -> bool:
     payload = load_scheduled_orders()
     if not payload or not payload.get("orders"):
         logger.info("No scheduled orders to execute")
+        send_discord_message("Execute-open run: no scheduled orders found.")
         return True
 
     broker = Broker()
@@ -189,6 +194,9 @@ def run_execute_at_open() -> bool:
     archive_executed_orders(payload)
     _schedule_path().unlink(missing_ok=True)
     logger.info("Execute-at-open complete: %d orders submitted", executed)
+    send_discord_message(
+        f"Execute-open complete. Submitted {executed} of {len(payload['orders'])} scheduled orders."
+    )
     return True
 
 

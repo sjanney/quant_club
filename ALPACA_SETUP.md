@@ -37,6 +37,10 @@ This guide will help you connect your Alpaca paper trading account to execute tr
 
    # Logging
    LOG_LEVEL=INFO
+
+   # Optional: Discord webhook notifications (free)
+   DISCORD_ENABLED=true
+   DISCORD_WEBHOOK_URL=
    ```
 
 3. **Never commit your `.env` file** - it's already in `.gitignore`

@@ -22,6 +22,7 @@ If your repo is public, GitHub Actions can run this for free (within fair-use li
 
 - **CI checks:** `.github/workflows/ci.yml`
 - **Scheduled trading:** `.github/workflows/scheduled_trading.yml`
+- **Daily no-trade health-check:** `.github/workflows/trading_healthcheck.yml`
 
 ### Required GitHub Secrets
 
@@ -30,6 +31,7 @@ Set these in **Settings → Secrets and variables → Actions**:
 - `ALPACA_API_KEY`
 - `ALPACA_API_SECRET`
 - optional: `LOG_LEVEL`
+- optional: `DISCORD_WEBHOOK_URL` (for free Discord notifications)
 
 `ALPACA_BASE_URL` is forced to paper in workflow env:
 
@@ -55,6 +57,18 @@ Use **Actions → scheduled-trading → Run workflow** and choose:
 - `after-hours`
 - `execute-open`
 - `both`
+
+For non-trading validation, run **Actions → trading-healthcheck → Run workflow**.
+It checks broker auth + market data + signal generation, but does not submit orders.
+
+### Discord notifications (optional, free)
+
+Create a Discord channel webhook URL and add it as the `DISCORD_WEBHOOK_URL` secret.
+When set, you will receive notifications for:
+
+- after-hours analysis completion (with number of scheduled orders)
+- execute-open completion (submitted order count)
+- live-mode order submissions/rejections
 
 ### Artifacts and Auditing
 

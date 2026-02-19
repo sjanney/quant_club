@@ -125,6 +125,13 @@ class LoggingConfig:
 
 
 @dataclass
+class NotificationConfig:
+    """Notification configuration (Discord webhook)."""
+    discord_webhook_url: str = os.getenv("DISCORD_WEBHOOK_URL", "")
+    discord_enabled: bool = os.getenv("DISCORD_ENABLED", "true").lower() == "true"
+
+
+@dataclass
 class ScheduleConfig:
     """Scheduled trading: after-hours analysis and execute at market open."""
     timezone: str = "America/New_York"
@@ -151,6 +158,7 @@ class Settings:
     data: DataConfig = field(default_factory=DataConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    notifications: NotificationConfig = field(default_factory=NotificationConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
 
     # Strategy configuration

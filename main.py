@@ -19,7 +19,7 @@ from decimal import Decimal
 from config.settings import settings
 from monitoring.logger import setup_logger
 from core.portfolio import Portfolio
-from core.order import OrderSide, OrderType
+from core.order import OrderType
 from risk.risk_manager import RiskManager
 from execution.broker import Broker
 from execution.order_manager import OrderManager
@@ -33,6 +33,7 @@ from data.market_data import MarketDataProvider
 from strategies.momentum_strategy import MomentumStrategy
 from strategies.rammageddon_strategy import RAMmageddonStrategy
 from monitoring.performance import PerformanceMonitor
+from monitoring.discord_notifier import send_discord_message
 from backtest.engine import BacktestEngine
 from backtest.results import BacktestResults
 
@@ -108,6 +109,9 @@ def run_live_trading():
     logger.info("Performance Summary: %s", summary)
 
     if not allow_orders:
+        send_discord_message(
+            f"Market closed. Signals computed (no orders sent): {signals}"
+        )
         logger.info("Live trading cycle complete (no orders; market closed)")
         return
 
@@ -135,8 +139,17 @@ def run_live_trading():
         )
         if order and order.broker_order_id:
             logger.info("Submitted: %s %s %s", symbol, side.value, qty)
+            send_discord_message(
+                f"Paper trade submitted: {symbol} {side.value.upper()} {qty} (strategy={strategy.get_name()})"
+            )
         elif order and order.status.value == "rejected":
             logger.warning("Order rejected: %s %s %s — %s", symbol, side.value, qty, order.reason)
+            send_discord_message(
+                f"Order rejected: {symbol} {side.value.upper()} {qty} — {order.reason}"
+            )
+
+    if not orders_to_send:
+        send_discord_message("Live cycle completed: no orders generated from current signals.")
 
     logger.info("Live trading cycle complete")
 
