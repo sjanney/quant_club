@@ -56,6 +56,8 @@ jobs:
           python test_alpaca_connection.py
 
       - name: Strategy signal generation check (no trades)
+        env:
+          PYTHONPATH: .
         run: |
           python - <<'PY'
           from data.market_data import MarketDataProvider

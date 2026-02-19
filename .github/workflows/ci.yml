@@ -30,7 +30,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest -q tests
+          PYTHONPATH=. pytest -q tests
 
       - name: CLI sanity check
         run: |
