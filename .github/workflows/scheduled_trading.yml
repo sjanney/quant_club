@@ -1,0 +1,184 @@
+name: scheduled-trading
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Job mode"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - after-hours
+          - execute-open
+          - both
+  schedule:
+    # After-hours (16:35 ET): EST and EDT variants in UTC
+    - cron: "35 21 * * 1-5"
+    - cron: "35 20 * * 1-5"
+    # Market open execution (09:31 ET): EST and EDT variants in UTC
+    - cron: "31 14 * * 1-5"
+    - cron: "31 13 * * 1-5"
+
+concurrency:
+  group: scheduled-trading
+  cancel-in-progress: false
+
+jobs:
+  after-hours:
+    if: >
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      (
+        github.event_name == 'workflow_dispatch' &&
+        (
+          github.event.inputs.mode == 'after-hours' ||
+          github.event.inputs.mode == 'both'
+        ) ||
+        github.event_name == 'schedule' &&
+        (
+          github.event.schedule == '35 21 * * 1-5' ||
+          github.event.schedule == '35 20 * * 1-5'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+      ALPACA_BASE_URL: https://paper-api.alpaca.markets
+      ALPACA_PAPER: "true"
+      LOG_LEVEL: ${{ secrets.LOG_LEVEL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for key in ALPACA_API_KEY ALPACA_API_SECRET; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing required secret: $key"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-dotenv numpy pandas scipy requests yfinance pytz cachetools alpaca-trade-api
+
+      - name: Run after-hours analysis
+        run: |
+          python main.py --mode after-hours
+
+      - name: Upload scheduled orders artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduled-orders
+          path: state/scheduled_orders.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload run logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: after-hours-logs
+          path: logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  execute-open:
+    if: >
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      (
+        github.event_name == 'workflow_dispatch' &&
+        (
+          github.event.inputs.mode == 'execute-open' ||
+          github.event.inputs.mode == 'both'
+        ) ||
+        github.event_name == 'schedule' &&
+        (
+          github.event.schedule == '31 14 * * 1-5' ||
+          github.event.schedule == '31 13 * * 1-5'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+      ALPACA_BASE_URL: https://paper-api.alpaca.markets
+      ALPACA_PAPER: "true"
+      LOG_LEVEL: ${{ secrets.LOG_LEVEL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for key in ALPACA_API_KEY ALPACA_API_SECRET; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing required secret: $key"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-dotenv numpy pandas scipy requests yfinance pytz cachetools alpaca-trade-api
+
+      - name: Ensure state directory exists
+        run: mkdir -p state
+
+      - name: Download latest scheduled orders artifact
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: scheduled_trading.yml
+          name: scheduled-orders
+          path: state
+          if_no_artifact_found: warn
+
+      - name: Normalize scheduled order file path
+        run: |
+          file="$(find state -name scheduled_orders.json -type f | head -n 1 || true)"
+          if [ -n "$file" ] && [ "$file" != "state/scheduled_orders.json" ]; then
+            cp "$file" state/scheduled_orders.json
+          fi
+
+      - name: Execute orders at market open
+        run: |
+          python main.py --mode execute-open
+
+      - name: Upload execution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: execute-open-artifacts
+          path: |
+            logs/
+            state/archive/
+            state/scheduler_state.json
+          if-no-files-found: ignore
+          retention-days: 14

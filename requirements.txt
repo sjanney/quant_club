@@ -1,0 +1,49 @@
+# Core dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+
+# Data providers
+yfinance>=0.2.28
+alpaca-trade-api>=3.0.0
+requests>=2.31.0
+
+# Technical analysis
+ta-lib>=0.4.28
+pandas-ta>=0.3.14b0
+
+# Risk & Portfolio
+pyportfolioopt>=1.5.4
+quantstats>=0.0.62
+
+# Database
+sqlalchemy>=2.0.0
+sqlite3
+
+# API & Web
+flask>=2.3.0
+flask-cors>=4.0.0
+python-dotenv>=1.0.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.14.0
+
+# Utilities
+python-dateutil>=2.8.2
+pytz>=2023.3
+tqdm>=4.65.0
+cachetools>=5.3.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Code quality
+black>=23.7.0
+flake8>=6.1.0
+mypy>=1.5.0
+
+# Type hints
+typing-extensions>=4.7.0

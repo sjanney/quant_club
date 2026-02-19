@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest python-dotenv numpy pandas scipy requests yfinance pytz cachetools alpaca-trade-api
+
+      - name: Lint (flake8)
+        run: |
+          flake8 tests execution/scheduled_trades.py execution/order_sizing.py --max-line-length=120
+
+      - name: Run tests
+        run: |
+          pytest -q tests
+
+      - name: CLI sanity check
+        run: |
+          python main.py --help
