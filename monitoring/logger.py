@@ -15,7 +15,8 @@ from config.settings import settings
 def setup_logger(name: str = "trading_desk") -> logging.Logger:
     """Set up logger with file and console handlers."""
     logger = logging.getLogger(name)
-    logger.setLevel(getattr(logging, settings.logging.log_level.upper()))
+    level_name = (settings.logging.log_level or "INFO").strip().upper()
+    logger.setLevel(getattr(logging, level_name, logging.INFO))
     
     # Remove existing handlers
     logger.handlers = []

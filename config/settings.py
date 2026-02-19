@@ -117,7 +117,7 @@ class BacktestConfig:
 class LoggingConfig:
     """Logging configuration."""
     log_dir: Path = PROJECT_ROOT / "logs"
-    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    log_level: str = os.getenv("LOG_LEVEL", "INFO") or "INFO"
     log_file: str = "trading_desk.log"
     log_rotation: bool = True
     log_max_bytes: int = 10 * 1024 * 1024  # 10MB

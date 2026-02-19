@@ -8,6 +8,8 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - name: Checkout
@@ -30,7 +32,7 @@ jobs:
 
       - name: Run tests
         run: |
-          PYTHONPATH=. pytest -q tests
+          pytest -q tests
 
       - name: CLI sanity check
         run: |
