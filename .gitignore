@@ -42,8 +42,8 @@ ENV/
 logs/
 *.log
 
-# Data
-data/
+# Data files (but NOT the data/ Python package)
+data/cache/
 *.csv
 *.parquet
 *.h5

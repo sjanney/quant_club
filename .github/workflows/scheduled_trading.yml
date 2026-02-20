@@ -43,6 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      PYTHONPATH: ${{ github.workspace }}
       ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
       ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
       ALPACA_BASE_URL: https://paper-api.alpaca.markets
@@ -76,7 +77,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install --prefer-binary "numpy>=1.24.0" "pandas>=2.0.0" scipy requests yfinance pytz cachetools alpaca-trade-api python-dotenv
+          pip install --prefer-binary "numpy>=1.24.0" "pandas>=2.0.0" scipy requests yfinance pytz cachetools alpaca-trade-api python-dotenv matplotlib
 
       - name: Run after-hours analysis
         run: |
@@ -150,7 +151,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install --prefer-binary "numpy>=1.24.0" "pandas>=2.0.0" scipy requests yfinance pytz cachetools alpaca-trade-api python-dotenv
+          pip install --prefer-binary "numpy>=1.24.0" "pandas>=2.0.0" scipy requests yfinance pytz cachetools alpaca-trade-api python-dotenv matplotlib
 
       - name: Ensure state directory exists
         run: mkdir -p state
