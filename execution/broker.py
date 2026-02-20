@@ -107,7 +107,7 @@ class Broker:
                 "cash": float(account.cash),
                 "buying_power": float(account.buying_power),
                 "portfolio_value": float(account.portfolio_value),
-                "day_trading_buying_power": float(account.daytrade_buying_power),
+                "day_trading_buying_power": float(getattr(account, "daytrading_buying_power", 0) or 0),
             }
         except Exception as e:
             logger.error("Error fetching account: %s", e)

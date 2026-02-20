@@ -106,15 +106,22 @@ You can run checks and scheduled paper trading in GitHub Actions (public repos a
 - Scheduled trading: `.github/workflows/scheduled_trading.yml`
 - Daily health-check (no trades): `.github/workflows/trading_healthcheck.yml`
 
-Set repository secrets:
+Set repository secrets (Settings → Secrets and variables → Actions):
 
-- `ALPACA_API_KEY`
-- `ALPACA_API_SECRET`
+- `ALPACA_API_KEY` — your Alpaca **paper** API key (exact name, no spaces)
+- `ALPACA_API_SECRET` — your Alpaca **paper** secret (exact name, no spaces)
 - optional: `LOG_LEVEL`
 - optional: `DISCORD_WEBHOOK_URL` (free Discord trade/status notifications)
 
-Use **Actions → scheduled-trading → Run workflow** for manual runs/troubleshooting.
-Use **Actions → trading-healthcheck → Run workflow** to validate connectivity/signals without placing orders.
+**If healthcheck fails with a credentials error:**
+
+1. Secret names must be exactly `ALPACA_API_KEY` and `ALPACA_API_SECRET` (case-sensitive).
+2. Use keys from [Alpaca Paper Dashboard](https://app.alpaca.markets/paper/dashboard) (paper keys only).
+3. Workflows run from a **fork** do not receive repo secrets; run from the main repository.
+4. When pasting secrets, avoid leading/trailing spaces or newlines.
+
+Use **Actions → scheduled-trading → Run workflow** for manual runs.
+Use **Actions → trading-healthcheck → Run workflow** to validate connectivity without placing orders.
 
 ## 📊 Features
 

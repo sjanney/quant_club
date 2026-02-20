@@ -17,12 +17,17 @@ load_dotenv()
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _env(key: str, default: str = "") -> str:
+    """Get env var and strip whitespace (avoids copy-paste issues in GitHub Secrets)."""
+    return (os.getenv(key, default) or "").strip()
+
+
 @dataclass
 class BrokerConfig:
     """Broker API configuration."""
     name: str = "alpaca"
-    api_key: str = os.getenv("ALPACA_API_KEY", "")
-    api_secret: str = os.getenv("ALPACA_API_SECRET", "")
+    api_key: str = _env("ALPACA_API_KEY")
+    api_secret: str = _env("ALPACA_API_SECRET")
     base_url: str = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
     data_url: str = os.getenv("ALPACA_DATA_URL", "https://data.alpaca.markets")
     use_paper: bool = os.getenv("ALPACA_PAPER", "true").lower() == "true"

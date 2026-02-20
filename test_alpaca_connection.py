@@ -20,6 +20,18 @@ from monitoring.logger import setup_logger
 logger = setup_logger("alpaca_test")
 
 
+def _print_github_secrets_help():
+    """Print help for GitHub Actions credentials issues."""
+    print()
+    print("If running in GitHub Actions:")
+    print("  1. Repo Settings → Secrets and variables → Actions")
+    print("  2. Add secrets named exactly: ALPACA_API_KEY and ALPACA_API_SECRET")
+    print("  3. Use your Alpaca *paper* trading keys (https://app.alpaca.markets/paper/dashboard)")
+    print("  4. Workflows on *forks* do not get access to repo secrets; run from the main repo.")
+    print("  5. Remove any leading/trailing spaces when pasting secrets.")
+    print()
+
+
 def test_alpaca_connection():
     """Test Alpaca paper trading connection."""
     print("=" * 60)
@@ -49,16 +61,22 @@ def test_alpaca_connection():
     
     # Initialize broker
     print("🔌 Initializing Broker...")
-    broker = Broker()
-    
+    try:
+        broker = Broker()
+    except Exception as e:
+        print(f"❌ ERROR: Failed to initialize broker: {e}")
+        _print_github_secrets_help()
+        return False
+
     if not broker.api:
         print("❌ ERROR: Failed to initialize broker API")
         print("Check your credentials and network connection.")
+        _print_github_secrets_help()
         return False
-    
+
     print("✓ Broker initialized successfully")
     print()
-    
+
     # Test account connection
     print("📊 Testing Account Connection...")
     try:
@@ -76,7 +94,10 @@ def test_alpaca_connection():
             print("❌ ERROR: Could not retrieve account information")
             return False
     except Exception as e:
+        err = str(e).lower()
         print(f"❌ ERROR: {e}")
+        if "401" in err or "unauthorized" in err or "invalid" in err or "credential" in err:
+            _print_github_secrets_help()
         logger.error(f"Account connection error: {e}", exc_info=True)
         return False
     

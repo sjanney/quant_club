@@ -32,12 +32,17 @@ jobs:
         run: |
           missing=0
           for key in ALPACA_API_KEY ALPACA_API_SECRET; do
-            if [ -z "${!key}" ]; then
-              echo "::error::Missing required secret: $key"
+            val="${!key}"
+            if [ -z "$val" ]; then
+              echo "::error::Secret $key is missing or empty."
               missing=1
+            else
+              echo "Secret $key is set (length ${#val} chars)"
             fi
           done
           if [ "$missing" -ne 0 ]; then
+            echo "::error::Add ALPACA_API_KEY and ALPACA_API_SECRET in repo Settings → Secrets and variables → Actions."
+            echo "::error::If this run is from a fork, secrets are not available; run from the main repo or add secrets to the fork."
             exit 1
           fi
 
