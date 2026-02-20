@@ -265,7 +265,7 @@ logger.error("Error occurred", exc_info=True)
 
 - **numpy/pandas**: Data manipulation
 - **yfinance**: Market data
-- **alpaca-trade-api**: Broker integration
+- **alpaca-py**: Broker integration
 - **matplotlib**: Visualization
 - **sqlalchemy**: Database (optional)
 

@@ -50,7 +50,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install --prefer-binary "numpy>=1.24.0" "pandas>=2.0.0" scipy requests yfinance pytz cachetools alpaca-trade-api python-dotenv matplotlib
+          pip install -r requirements-lock.txt
 
       - name: Broker/API health check (no trades)
         run: |

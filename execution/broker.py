@@ -1,7 +1,7 @@
 """
 Broker Interface
 
-Abstracts broker API interactions (Alpaca, etc.).
+Abstracts broker API interactions (Alpaca via alpaca-py).
 """
 
 import logging
@@ -10,7 +10,19 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 try:
-    import alpaca_trade_api as tradeapi
+    from alpaca.trading.client import TradingClient
+    from alpaca.trading.requests import (
+        MarketOrderRequest,
+        LimitOrderRequest,
+        StopOrderRequest,
+        StopLimitOrderRequest,
+        GetOrdersRequest,
+    )
+    from alpaca.trading.enums import (
+        OrderSide as AlpacaSide,
+        TimeInForce,
+        QueryOrderStatus,
+    )
     ALPACA_AVAILABLE = True
 except ImportError:
     ALPACA_AVAILABLE = False
@@ -20,69 +32,74 @@ from core.order import Order, OrderType, OrderSide, OrderStatus
 
 logger = logging.getLogger(__name__)
 
+_SIDE_MAP = {
+    OrderSide.BUY: AlpacaSide.BUY if ALPACA_AVAILABLE else None,
+    OrderSide.SELL: AlpacaSide.SELL if ALPACA_AVAILABLE else None,
+}
+
+_STATUS_MAP = {
+    "new": OrderStatus.PENDING,
+    "accepted": OrderStatus.SUBMITTED,
+    "filled": OrderStatus.FILLED,
+    "partially_filled": OrderStatus.PARTIALLY_FILLED,
+    "canceled": OrderStatus.CANCELLED,
+    "expired": OrderStatus.EXPIRED,
+    "rejected": OrderStatus.REJECTED,
+}
+
 
 class Broker:
     """Broker interface for executing trades."""
-    
+
     def __init__(self):
         """Initialize broker."""
         self.config = settings.broker
-        self.api = None
+        self.api: Optional["TradingClient"] = None
         self._is_paper_trading = False
-        
+
         if ALPACA_AVAILABLE and self.config.api_key:
             try:
-                # Verify we're using paper trading URL
-                if "paper-api" in self.config.base_url.lower():
-                    self._is_paper_trading = True
+                self._is_paper_trading = "paper-api" in self.config.base_url.lower()
+                if self._is_paper_trading:
                     logger.info("Initializing Alpaca PAPER TRADING broker")
                 else:
-                    logger.warning("⚠️  WARNING: Not using paper trading URL!")
-                    logger.warning(f"   Current URL: {self.config.base_url}")
-                    logger.warning("   Paper trading URL: https://paper-api.alpaca.markets")
-                
-                self.api = tradeapi.REST(
-                    self.config.api_key,
-                    self.config.api_secret,
-                    self.config.base_url,
-                    api_version="v2",
+                    logger.warning("WARNING: Not using paper trading URL!")
+                    logger.warning("  Current URL: %s", self.config.base_url)
+
+                self.api = TradingClient(
+                    api_key=self.config.api_key,
+                    secret_key=self.config.api_secret,
+                    paper=self._is_paper_trading,
                 )
-                
-                # Verify connection by checking account
+
                 try:
                     account = self.api.get_account()
-                    trading_mode = "PAPER TRADING" if self._is_paper_trading else "LIVE TRADING"
-                    logger.info(f"✓ Broker initialized: Alpaca ({trading_mode})")
-                    logger.info(f"  Account Status: {account.status}")
+                    mode = "PAPER TRADING" if self._is_paper_trading else "LIVE TRADING"
+                    logger.info("Broker initialized: Alpaca (%s)", mode)
+                    logger.info("  Account Status: %s", account.status)
                 except Exception as e:
-                    logger.error(f"Failed to verify broker connection: {e}")
-                    logger.error("Please check your API credentials")
-                    
+                    logger.error("Failed to verify broker connection: %s", e)
+
             except Exception as e:
-                logger.error(f"Failed to initialize broker: {e}")
-                logger.error("Please check your .env configuration")
+                logger.error("Failed to initialize broker: %s", e)
         else:
             if not ALPACA_AVAILABLE:
-                logger.warning("alpaca-trade-api not installed - running in simulation mode")
+                logger.warning("alpaca-py not installed - running in simulation mode")
             else:
                 logger.warning("Broker not configured - running in simulation mode")
                 logger.warning("Set ALPACA_API_KEY and ALPACA_API_SECRET in .env file")
-    
+
     @property
     def is_paper_trading(self) -> bool:
-        """Check if broker is configured for paper trading."""
         return self._is_paper_trading
-    
+
     @property
     def is_configured(self) -> bool:
-        """Check if broker is properly configured."""
         return self.api is not None
-    
+
     def get_account(self) -> Optional[Dict]:
-        """Get account information."""
         if not self.api:
             return None
-        
         try:
             account = self.api.get_account()
             return {
@@ -90,37 +107,32 @@ class Broker:
                 "cash": float(account.cash),
                 "buying_power": float(account.buying_power),
                 "portfolio_value": float(account.portfolio_value),
-                "day_trading_buying_power": float(account.daytrading_buying_power),
+                "day_trading_buying_power": float(account.daytrade_buying_power),
             }
         except Exception as e:
-            logger.error(f"Error fetching account: {e}")
+            logger.error("Error fetching account: %s", e)
             return None
-    
+
     def get_positions(self) -> Dict[str, Decimal]:
-        """Get current positions (symbol -> market value)."""
         if not self.api:
             return {}
-        
         try:
-            positions = self.api.list_positions()
-            result = {}
-            for pos in positions:
-                result[pos.symbol] = Decimal(str(float(pos.qty) * float(pos.current_price)))
-            return result
+            positions = self.api.get_all_positions()
+            return {
+                pos.symbol: Decimal(str(float(pos.qty) * float(pos.current_price)))
+                for pos in positions
+            }
         except Exception as e:
-            logger.error(f"Error fetching positions: {e}")
+            logger.error("Error fetching positions: %s", e)
             return {}
-    
+
     def get_position_details(self) -> List[Dict]:
-        """Get detailed position information."""
         if not self.api:
             return []
-        
         try:
-            positions = self.api.list_positions()
-            result = []
-            for pos in positions:
-                result.append({
+            positions = self.api.get_all_positions()
+            return [
+                {
                     "symbol": pos.symbol,
                     "quantity": Decimal(str(pos.qty)),
                     "avg_entry_price": Decimal(str(pos.avg_entry_price)),
@@ -128,12 +140,13 @@ class Broker:
                     "market_value": Decimal(str(float(pos.qty) * float(pos.current_price))),
                     "unrealized_pl": Decimal(str(pos.unrealized_pl)),
                     "unrealized_plpc": float(pos.unrealized_plpc),
-                })
-            return result
+                }
+                for pos in positions
+            ]
         except Exception as e:
-            logger.error(f"Error fetching position details: {e}")
+            logger.error("Error fetching position details: %s", e)
             return []
-    
+
     def submit_order(
         self,
         symbol: str,
@@ -145,131 +158,116 @@ class Broker:
         time_in_force: str = "day",
         fractional: bool = False,
     ) -> Optional[str]:
-        """
-        Submit an order and return order ID.
-        
-        Args:
-            symbol: Stock symbol (e.g., 'AAPL')
-            quantity: Number of shares (can be fractional if fractional=True)
-            side: OrderSide.BUY or OrderSide.SELL
-            order_type: OrderType.MARKET, LIMIT, STOP, or STOP_LIMIT
-            limit_price: Required for LIMIT and STOP_LIMIT orders
-            stop_price: Required for STOP and STOP_LIMIT orders
-            time_in_force: 'day', 'gtc' (good-till-canceled), 'ioc' (immediate-or-cancel), 'fok' (fill-or-kill)
-            fractional: Allow fractional shares (Alpaca supports this)
-        
-        Returns:
-            Order ID if successful, None otherwise
-        """
+        """Submit an order and return order ID."""
         if not self.api:
             logger.warning("Broker not configured - order not submitted")
             return None
-        
-        # Validate order parameters
+
         if quantity <= 0:
-            logger.error(f"Invalid quantity: {quantity}")
+            logger.error("Invalid quantity: %s", quantity)
             return None
-        
+
         if order_type == OrderType.LIMIT and not limit_price:
             logger.error("Limit price required for LIMIT orders")
             return None
-        
         if order_type == OrderType.STOP and not stop_price:
             logger.error("Stop price required for STOP orders")
             return None
-        
-        if order_type == OrderType.STOP_LIMIT:
-            if not limit_price or not stop_price:
-                logger.error("Both limit_price and stop_price required for STOP_LIMIT orders")
-                return None
-        
-        try:
-            order_params = {
-                "symbol": symbol.upper(),
-                "side": side.value,
-                "type": order_type.value,
-                "time_in_force": time_in_force,
-            }
-            
-            # Alpaca supports fractional shares via notional parameter
-            if fractional:
-                order_params["notional"] = float(quantity)
-            else:
-                order_params["qty"] = float(quantity)
-            
-            if order_type == OrderType.LIMIT and limit_price:
-                order_params["limit_price"] = float(limit_price)
-            elif order_type == OrderType.STOP and stop_price:
-                order_params["stop_price"] = float(stop_price)
-            elif order_type == OrderType.STOP_LIMIT:
-                if limit_price:
-                    order_params["limit_price"] = float(limit_price)
-                if stop_price:
-                    order_params["stop_price"] = float(stop_price)
-            
-            trading_mode = "PAPER" if self._is_paper_trading else "LIVE"
-            logger.info(f"[{trading_mode}] Submitting order: {symbol} {side.value} {quantity} @ {order_type.value}")
-            
-            order = self.api.submit_order(**order_params)
-            logger.info(f"✓ Order submitted successfully: {order.id}")
-            return order.id
-        
-        except Exception as e:
-            logger.error(f"Error submitting order: {e}")
-            logger.error(f"  Symbol: {symbol}, Side: {side.value}, Type: {order_type.value}")
+        if order_type == OrderType.STOP_LIMIT and (not limit_price or not stop_price):
+            logger.error("Both limit_price and stop_price required for STOP_LIMIT orders")
             return None
-    
+
+        tif = TimeInForce.DAY if time_in_force == "day" else TimeInForce.GTC
+        alpaca_side = _SIDE_MAP[side]
+
+        try:
+            qty_val = float(quantity)
+            if order_type == OrderType.MARKET:
+                req = MarketOrderRequest(
+                    symbol=symbol.upper(),
+                    qty=qty_val if not fractional else None,
+                    notional=qty_val if fractional else None,
+                    side=alpaca_side,
+                    time_in_force=tif,
+                )
+            elif order_type == OrderType.LIMIT:
+                req = LimitOrderRequest(
+                    symbol=symbol.upper(),
+                    qty=qty_val,
+                    side=alpaca_side,
+                    time_in_force=tif,
+                    limit_price=float(limit_price),
+                )
+            elif order_type == OrderType.STOP:
+                req = StopOrderRequest(
+                    symbol=symbol.upper(),
+                    qty=qty_val,
+                    side=alpaca_side,
+                    time_in_force=tif,
+                    stop_price=float(stop_price),
+                )
+            elif order_type == OrderType.STOP_LIMIT:
+                req = StopLimitOrderRequest(
+                    symbol=symbol.upper(),
+                    qty=qty_val,
+                    side=alpaca_side,
+                    time_in_force=tif,
+                    limit_price=float(limit_price),
+                    stop_price=float(stop_price),
+                )
+            else:
+                logger.error("Unsupported order type: %s", order_type)
+                return None
+
+            mode = "PAPER" if self._is_paper_trading else "LIVE"
+            logger.info(
+                "[%s] Submitting order: %s %s %s @ %s",
+                mode, symbol, side.value, quantity, order_type.value,
+            )
+
+            order = self.api.submit_order(order_data=req)
+            logger.info("Order submitted successfully: %s", order.id)
+            return str(order.id)
+
+        except Exception as e:
+            logger.error("Error submitting order: %s", e)
+            logger.error("  Symbol: %s, Side: %s, Type: %s", symbol, side.value, order_type.value)
+            return None
+
     def cancel_order(self, order_id: str) -> bool:
-        """Cancel an order."""
         if not self.api:
             return False
-        
         try:
-            self.api.cancel_order(order_id)
-            logger.info(f"Order cancelled: {order_id}")
+            self.api.cancel_order_by_id(order_id)
+            logger.info("Order cancelled: %s", order_id)
             return True
         except Exception as e:
-            logger.error(f"Error cancelling order: {e}")
+            logger.error("Error cancelling order: %s", e)
             return False
-    
+
     def get_order_status(self, order_id: str) -> Optional[OrderStatus]:
-        """Get order status."""
         if not self.api:
             return None
-        
         try:
-            order = self.api.get_order(order_id)
-            status_map = {
-                "new": OrderStatus.PENDING,
-                "accepted": OrderStatus.SUBMITTED,
-                "filled": OrderStatus.FILLED,
-                "partially_filled": OrderStatus.PARTIALLY_FILLED,
-                "canceled": OrderStatus.CANCELLED,
-                "expired": OrderStatus.EXPIRED,
-                "rejected": OrderStatus.REJECTED,
-            }
-            return status_map.get(order.status.lower(), OrderStatus.PENDING)
+            order = self.api.get_order_by_id(order_id)
+            return _STATUS_MAP.get(order.status.value if hasattr(order.status, 'value') else str(order.status).lower(), OrderStatus.PENDING)
         except Exception as e:
-            logger.error(f"Error fetching order status: {e}")
+            logger.error("Error fetching order status: %s", e)
             return None
-    
+
     def is_market_open(self) -> bool:
-        """Check if market is open."""
         if not self.api:
             return False
-        
         try:
             clock = self.api.get_clock()
             return clock.is_open
         except Exception as e:
-            logger.error(f"Error checking market status: {e}")
+            logger.error("Error checking market status: %s", e)
             return False
-    
+
     def get_market_clock(self) -> Optional[Dict]:
-        """Get detailed market clock information."""
         if not self.api:
             return None
-        
         try:
             clock = self.api.get_clock()
             return {
@@ -278,33 +276,34 @@ class Broker:
                 "next_close": clock.next_close.isoformat() if clock.next_close else None,
             }
         except Exception as e:
-            logger.error(f"Error fetching market clock: {e}")
+            logger.error("Error fetching market clock: %s", e)
             return None
-    
+
     def get_all_orders(self, status: Optional[str] = None, limit: int = 50) -> List[Dict]:
-        """Get all orders, optionally filtered by status."""
         if not self.api:
             return []
-        
         try:
-            orders = self.api.list_orders(status=status, limit=limit)
-            result = []
-            for order in orders:
-                result.append({
-                    "id": order.id,
-                    "symbol": order.symbol,
-                    "side": order.side,
-                    "quantity": float(order.qty),
-                    "filled_quantity": float(order.filled_qty) if order.filled_qty else 0,
-                    "order_type": order.order_type,
-                    "status": order.status,
-                    "time_in_force": order.time_in_force,
-                    "limit_price": float(order.limit_price) if order.limit_price else None,
-                    "stop_price": float(order.stop_price) if order.stop_price else None,
-                    "created_at": order.created_at.isoformat() if order.created_at else None,
-                    "filled_at": order.filled_at.isoformat() if order.filled_at else None,
-                })
-            return result
+            params = GetOrdersRequest(limit=limit)
+            if status:
+                params.status = QueryOrderStatus(status)
+            orders = self.api.get_orders(filter=params)
+            return [
+                {
+                    "id": str(o.id),
+                    "symbol": o.symbol,
+                    "side": o.side.value if hasattr(o.side, 'value') else str(o.side),
+                    "quantity": float(o.qty) if o.qty else 0,
+                    "filled_quantity": float(o.filled_qty) if o.filled_qty else 0,
+                    "order_type": o.order_type.value if hasattr(o.order_type, 'value') else str(o.order_type),
+                    "status": o.status.value if hasattr(o.status, 'value') else str(o.status),
+                    "time_in_force": o.time_in_force.value if hasattr(o.time_in_force, 'value') else str(o.time_in_force),
+                    "limit_price": float(o.limit_price) if o.limit_price else None,
+                    "stop_price": float(o.stop_price) if o.stop_price else None,
+                    "created_at": o.created_at.isoformat() if o.created_at else None,
+                    "filled_at": o.filled_at.isoformat() if o.filled_at else None,
+                }
+                for o in orders
+            ]
         except Exception as e:
-            logger.error(f"Error fetching orders: {e}")
+            logger.error("Error fetching orders: %s", e)
             return []

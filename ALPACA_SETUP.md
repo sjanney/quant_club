@@ -272,7 +272,7 @@ The broker validates all orders before submission:
 - **Alpaca Documentation**: [https://alpaca.markets/docs](https://alpaca.markets/docs)
 - **Paper Trading Dashboard**: [https://app.alpaca.markets/paper/dashboard](https://app.alpaca.markets/paper/dashboard)
 - **API Reference**: [https://alpaca.markets/docs/api-documentation](https://alpaca.markets/docs/api-documentation)
-- **Alpaca Python SDK**: [https://github.com/alpacahq/alpaca-trade-api-python](https://github.com/alpacahq/alpaca-trade-api-python)
+- **Alpaca Python SDK**: [https://github.com/alpacahq/alpaca-py](https://github.com/alpacahq/alpaca-py)
 
 ## ⚠️ Important Notes
 
