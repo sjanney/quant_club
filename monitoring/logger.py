@@ -31,8 +31,9 @@ def setup_logger(name: str = "trading_desk") -> logging.Logger:
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
     
-    # File handler with rotation
+    # File handler with rotation: attach to root so all app loggers write to the same file
     if settings.logging.log_rotation:
+        settings.logging.log_dir.mkdir(parents=True, exist_ok=True)
         log_file = settings.logging.log_dir / settings.logging.log_file
         file_handler = RotatingFileHandler(
             log_file,
@@ -45,8 +46,10 @@ def setup_logger(name: str = "trading_desk") -> logging.Logger:
             datefmt="%Y-%m-%d %H:%M:%S",
         )
         file_handler.setFormatter(file_formatter)
-        logger.addHandler(file_handler)
-    
+        root = logging.getLogger()
+        root.setLevel(logging.DEBUG)
+        if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
+            root.addHandler(file_handler)
     return logger
 
 

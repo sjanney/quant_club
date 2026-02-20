@@ -279,6 +279,42 @@ class Broker:
             logger.error("Error fetching market clock: %s", e)
             return None
 
+    def _order_to_dict(self, o) -> Dict:
+        """Convert broker order object to dict with fill info for metrics."""
+        filled_qty = float(o.filled_qty) if o.filled_qty else 0
+        fill_price = getattr(o, "filled_avg_price", None)
+        if fill_price is not None:
+            try:
+                fill_price = float(fill_price)
+            except (TypeError, ValueError):
+                fill_price = None
+        return {
+            "id": str(o.id),
+            "symbol": o.symbol,
+            "side": o.side.value if hasattr(o.side, "value") else str(o.side),
+            "quantity": float(o.qty) if o.qty else 0,
+            "filled_quantity": filled_qty,
+            "filled_avg_price": fill_price,
+            "order_type": o.order_type.value if hasattr(o.order_type, "value") else str(o.order_type),
+            "status": o.status.value if hasattr(o.status, "value") else str(o.status),
+            "time_in_force": o.time_in_force.value if hasattr(o.time_in_force, "value") else str(o.time_in_force),
+            "limit_price": float(o.limit_price) if o.limit_price else None,
+            "stop_price": float(o.stop_price) if o.stop_price else None,
+            "created_at": o.created_at.isoformat() if o.created_at else None,
+            "filled_at": o.filled_at.isoformat() if o.filled_at else None,
+        }
+
+    def get_order_details(self, order_id: str) -> Optional[Dict]:
+        """Fetch one order by ID with fill info for metrics."""
+        if not self.api:
+            return None
+        try:
+            order = self.api.get_order_by_id(order_id)
+            return self._order_to_dict(order)
+        except Exception as e:
+            logger.error("Error fetching order %s: %s", order_id, e)
+            return None
+
     def get_all_orders(self, status: Optional[str] = None, limit: int = 50) -> List[Dict]:
         if not self.api:
             return []
@@ -287,23 +323,7 @@ class Broker:
             if status:
                 params.status = QueryOrderStatus(status)
             orders = self.api.get_orders(filter=params)
-            return [
-                {
-                    "id": str(o.id),
-                    "symbol": o.symbol,
-                    "side": o.side.value if hasattr(o.side, 'value') else str(o.side),
-                    "quantity": float(o.qty) if o.qty else 0,
-                    "filled_quantity": float(o.filled_qty) if o.filled_qty else 0,
-                    "order_type": o.order_type.value if hasattr(o.order_type, 'value') else str(o.order_type),
-                    "status": o.status.value if hasattr(o.status, 'value') else str(o.status),
-                    "time_in_force": o.time_in_force.value if hasattr(o.time_in_force, 'value') else str(o.time_in_force),
-                    "limit_price": float(o.limit_price) if o.limit_price else None,
-                    "stop_price": float(o.stop_price) if o.stop_price else None,
-                    "created_at": o.created_at.isoformat() if o.created_at else None,
-                    "filled_at": o.filled_at.isoformat() if o.filled_at else None,
-                }
-                for o in orders
-            ]
+            return [self._order_to_dict(o) for o in orders]
         except Exception as e:
             logger.error("Error fetching orders: %s", e)
             return []

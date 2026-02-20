@@ -13,9 +13,10 @@ Or via cron on a server (see SCHEDULER.md).
 
 import json
 import logging
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pytz
 
@@ -95,6 +96,94 @@ def archive_executed_orders(payload: Dict[str, Any]) -> Path:
     return path
 
 
+def _daily_report_path(prefix: str) -> Path:
+    """Path for daily report file: state/daily_YYYY-MM-DD_<prefix>.txt."""
+    settings.schedule.state_dir.mkdir(parents=True, exist_ok=True)
+    today = datetime.now(TZ).strftime("%Y-%m-%d")
+    return settings.schedule.state_dir / f"daily_{today}_{prefix}.txt"
+
+
+def _write_daily_after_hours(
+    strategy_name: str,
+    equity: float,
+    signals: Dict[str, float],
+    orders_payload: List[Dict[str, Any]],
+) -> Path:
+    """Write human-readable after-hours summary for the day."""
+    path = _daily_report_path("after_hours")
+    lines = [
+        f"After-Hours Run: {datetime.now(TZ).isoformat()}",
+        f"Strategy: {strategy_name}",
+        f"Equity snapshot: {equity:,.2f}",
+        "",
+        "Signals:",
+    ]
+    for sym, val in sorted(signals.items()):
+        lines.append(f"  {sym}: {val}")
+    lines.append("")
+    lines.append(f"Scheduled orders ({len(orders_payload)}):")
+    for o in orders_payload:
+        lines.append(f"  {o['symbol']} {o['side']} qty={o['quantity']}")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    logger.info("Wrote daily report: %s", path)
+    return path
+
+
+def _write_daily_execute_open(
+    results: List[Tuple[str, str, float, str]],
+    submitted_count: int,
+    rejected_count: int,
+    failed_count: int,
+) -> Path:
+    """Write human-readable execute-open summary (per-order outcome + counts)."""
+    path = _daily_report_path("execute_open")
+    lines = [
+        f"Execute-Open Run: {datetime.now(TZ).isoformat()}",
+        "",
+        "Per-order results:",
+    ]
+    for symbol, side, qty, outcome in results:
+        lines.append(f"  {symbol} {side} {qty}: {outcome}")
+    lines.append("")
+    lines.append(f"Summary: submitted={submitted_count} rejected={rejected_count} failed={failed_count}")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    logger.info("Wrote daily report: %s", path)
+    return path
+
+
+def _write_trade_metrics_report(
+    order_ids: List[str],
+    broker: Broker,
+) -> Path:
+    """Fetch fill info for submitted orders and write trade metrics report."""
+    path = _daily_report_path("trade_metrics")
+    lines = [
+        f"Trade Metrics: {datetime.now(TZ).isoformat()}",
+        "",
+    ]
+    total_filled_notional = 0.0
+    for order_id in order_ids:
+        details = broker.get_order_details(order_id) if order_id else None
+        if not details:
+            lines.append(f"  Order {order_id}: (could not fetch)")
+            continue
+        sym = details.get("symbol", "?")
+        side = details.get("side", "?")
+        qty_req = details.get("quantity", 0)
+        qty_filled = details.get("filled_quantity", 0)
+        fill_price = details.get("filled_avg_price")
+        status = details.get("status", "?")
+        filled_at = details.get("filled_at", "")
+        notional = qty_filled * fill_price if (fill_price and qty_filled) else 0
+        total_filled_notional += notional
+        lines.append(f"  {sym} {side} qty_req={qty_req} filled={qty_filled} fill_price={fill_price} status={status} filled_at={filled_at} notional={notional:,.2f}")
+    lines.append("")
+    lines.append(f"Total filled notional: {total_filled_notional:,.2f}")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    logger.info("Wrote trade metrics report: %s", path)
+    return path
+
+
 def run_after_hours() -> bool:
     """
     Run after-market analysis: fetch data, run strategy, compute orders, save to state.
@@ -146,6 +235,12 @@ def run_after_hours() -> bool:
         equity_snapshot=equity,
         signals_snapshot=signals,
     )
+    _write_daily_after_hours(
+        strategy_name=strategy.get_name(),
+        equity=equity,
+        signals=signals,
+        orders_payload=orders_payload,
+    )
     logger.info("After-hours analysis complete: %d orders scheduled", len(orders_payload))
     send_discord_message(
         f"After-hours analysis complete. Scheduled {len(orders_payload)} orders. Signals: {signals}"
@@ -156,7 +251,7 @@ def run_after_hours() -> bool:
 def run_execute_at_open() -> bool:
     """
     Load scheduled orders and submit to broker at market open.
-    Archives the file after execution.
+    Archives the file after execution; writes daily report and trade metrics.
     """
     logger.info("Executing scheduled orders at market open")
     payload = load_scheduled_orders()
@@ -171,32 +266,68 @@ def run_execute_at_open() -> bool:
         return False
 
     order_manager = OrderManager(broker)
-    executed = 0
+    results: List[Tuple[str, str, float, str]] = []
+    submitted_order_ids: List[str] = []
+    submitted_count = 0
+    rejected_count = 0
+    failed_count = 0
+
     for item in payload["orders"]:
         symbol = item["symbol"]
         side_str = item["side"]
-        quantity = item["quantity"]
+        quantity = float(item["quantity"])
         side = OrderSide.BUY if side_str == "buy" else OrderSide.SELL
-        order = order_manager.submit_order(
-            symbol=symbol,
-            quantity=Decimal(str(quantity)),
-            side=side,
-            order_type=OrderType.MARKET,
-            strategy=payload.get("strategy", "scheduled"),
-            reason="scheduled at market open",
-        )
+        order = None
+        try:
+            order = order_manager.submit_order(
+                symbol=symbol,
+                quantity=Decimal(str(quantity)),
+                side=side,
+                order_type=OrderType.MARKET,
+                strategy=payload.get("strategy", "scheduled"),
+                reason="scheduled at market open",
+            )
+        except Exception as e:
+            logger.exception("Scheduled order failed: %s %s %s - %s", symbol, side_str, quantity, e)
+            results.append((symbol, side_str, quantity, f"failed: {e}"))
+            failed_count += 1
+            continue
+
         if order and order.broker_order_id:
-            executed += 1
+            submitted_count += 1
+            submitted_order_ids.append(order.broker_order_id)
+            results.append((symbol, side_str, quantity, "submitted"))
             logger.info("Submitted scheduled order: %s %s %s", symbol, side_str, quantity)
         elif order and getattr(order, "status", None) and str(getattr(order.status, "value", "")) == "rejected":
-            logger.warning("Scheduled order rejected: %s %s %s", symbol, side_str, quantity)
+            rejected_count += 1
+            reason = getattr(order, "reason", "rejected")
+            results.append((symbol, side_str, quantity, f"rejected: {reason}"))
+            logger.warning("Scheduled order rejected: %s %s %s - %s", symbol, side_str, quantity, reason)
+        else:
+            results.append((symbol, side_str, quantity, "failed (no order id)"))
+            failed_count += 1
+            logger.warning("Scheduled order failed (no order id): %s %s %s", symbol, side_str, quantity)
+
+    _write_daily_execute_open(results, submitted_count, rejected_count, failed_count)
+
+    if submitted_order_ids:
+        time.sleep(2)
+        _write_trade_metrics_report(submitted_order_ids, broker)
 
     archive_executed_orders(payload)
     _schedule_path().unlink(missing_ok=True)
-    logger.info("Execute-at-open complete: %d orders submitted", executed)
-    send_discord_message(
-        f"Execute-open complete. Submitted {executed} of {len(payload['orders'])} scheduled orders."
+    logger.info(
+        "Execute-at-open complete: submitted=%d rejected=%d failed=%d",
+        submitted_count, rejected_count, failed_count,
     )
+    summary_line = f"Submitted {submitted_count}, rejected {rejected_count}, failed {failed_count}"
+    discord_parts = [f"Execute-open complete. {summary_line} of {len(payload['orders'])} scheduled."]
+    if results:
+        short = ", ".join(f"{s} {side} {q}" for s, side, q, _ in results[:10])
+        if len(results) > 10:
+            short += f" (+{len(results) - 10} more)"
+        discord_parts.append(f"Orders: {short}")
+    send_discord_message("\n".join(discord_parts)[:1900])
     return True
 
 

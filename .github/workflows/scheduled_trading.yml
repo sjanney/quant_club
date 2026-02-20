@@ -83,6 +83,15 @@ jobs:
         run: |
           python main.py --mode after-hours
 
+      - name: Set job summary (after-hours)
+        run: |
+          if [ -f state/scheduled_orders.json ]; then
+            count=$(python -c "import json; d=json.load(open('state/scheduled_orders.json')); print(len(d.get('orders',[])))")
+            echo "Scheduled $count orders for execute-open" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "After-hours run completed (no orders file)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload scheduled orders artifact
         uses: actions/upload-artifact@v4
         with:
@@ -95,7 +104,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: after-hours-logs
-          path: logs/
+          path: |
+            logs/
+            state/daily_*.txt
           if-no-files-found: ignore
           retention-days: 7
 
@@ -172,9 +183,23 @@ jobs:
             cp "$file" state/scheduled_orders.json
           fi
 
+      - name: Check for scheduled orders
+        run: |
+          if [ ! -f state/scheduled_orders.json ]; then
+            echo "::error::No scheduled-orders artifact found (state/scheduled_orders.json missing). Ensure after-hours ran and the scheduled-orders artifact is available."
+            exit 1
+          fi
+
       - name: Execute orders at market open
         run: |
           python main.py --mode execute-open
+
+      - name: Set job summary (execute-open)
+        run: |
+          for f in state/daily_*_execute_open.txt; do
+            [ -f "$f" ] && cat "$f" >> "$GITHUB_STEP_SUMMARY" && break
+          done
+          echo "Download execute-open-artifacts for logs, daily reports, and trade metrics." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload execution artifacts
         uses: actions/upload-artifact@v4
@@ -184,5 +209,6 @@ jobs:
             logs/
             state/archive/
             state/scheduler_state.json
+            state/daily_*.txt
           if-no-files-found: ignore
           retention-days: 14

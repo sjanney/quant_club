@@ -122,6 +122,7 @@ Set repository secrets (Settings → Secrets and variables → Actions):
 
 Use **Actions → scheduled-trading → Run workflow** for manual runs.
 Use **Actions → trading-healthcheck → Run workflow** to validate connectivity without placing orders.
+To see what ran today (logs, daily reports, trade metrics), download the workflow artifacts and see [SCHEDULER.md](./SCHEDULER.md#daily-run-visibility-what-was-done-today).
 
 ## 📊 Features
 

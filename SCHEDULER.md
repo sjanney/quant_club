@@ -72,9 +72,23 @@ When set, you will receive notifications for:
 
 ### Artifacts and Auditing
 
-- After-hours uploads `scheduled-orders` artifact.
-- Execute-open uploads logs/archive artifacts.
+- After-hours uploads `scheduled-orders` and `after-hours-logs` (logs + daily report).
+- Execute-open uploads `execute-open-artifacts`: logs, archive, scheduler state, **daily reports**, and **trade metrics report**.
 - Concurrency guard prevents overlapping runs.
+
+### Daily run visibility (what was done today)
+
+After each run, download the workflow artifacts to see exactly what happened:
+
+1. **Artifacts**
+   - **after-hours-logs:** `logs/trading_desk.log` (full log) and `state/daily_YYYY-MM-DD_after_hours.txt` (strategy, signals, scheduled orders list).
+   - **execute-open-artifacts:** `logs/`, `state/archive/` (executed payloads), `state/scheduler_state.json`, `state/daily_YYYY-MM-DD_execute_open.txt` (per-order outcome: submitted/rejected/failed), and `state/daily_YYYY-MM-DD_trade_metrics.txt` (fill info: symbol, side, qty filled, fill price, status, notional).
+
+2. **Discord**  
+   If `DISCORD_WEBHOOK_URL` is set, you get a short message after after-hours and after execute-open (order counts and a one-line order list).
+
+3. **Job Summary**  
+   In Actions, open the run and check the **Summary** tab: after-hours shows “Scheduled N orders”; execute-open shows the execute-open daily report and a reminder to download artifacts for logs and trade metrics.
 
 ---
 
@@ -147,6 +161,9 @@ In `config/settings.py`, `ScheduleConfig`:
 - **state/scheduled_orders.json** — written by after-hours; read and deleted by execute-open. Contains `generated_at_et`, `strategy`, `equity_snapshot`, `signals_snapshot`, and `orders` (list of `{symbol, side, quantity}`).
 - **state/scheduler_state.json** — last run dates for after-hours and execute-open so each runs at most once per day.
 - **state/archive/executed_YYYYMMDD_HHMMSS.json** — copy of the executed scheduled orders for audit.
+- **state/daily_YYYY-MM-DD_after_hours.txt** — human-readable after-hours summary (signals, scheduled orders).
+- **state/daily_YYYY-MM-DD_execute_open.txt** — per-order outcome (submitted/rejected/failed) and counts.
+- **state/daily_YYYY-MM-DD_trade_metrics.txt** — trade metrics (fill price, filled qty, status, notional) for the day’s executed orders.
 
 ---
 
