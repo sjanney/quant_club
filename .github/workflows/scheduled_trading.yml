@@ -1,5 +1,8 @@
 name: scheduled-trading
 
+# PAUSED: schedule disabled while portfolio is being reset.
+# Re-enable the schedule block below once the new strategy is chosen and
+# the liquidation workflow has been run.
 on:
   workflow_dispatch:
     inputs:
@@ -12,13 +15,11 @@ on:
           - after-hours
           - execute-open
           - both
-  schedule:
-    # After-hours (16:35 ET): EST and EDT variants in UTC
-    - cron: "35 21 * * 1-5"
-    - cron: "35 20 * * 1-5"
-    # Market open execution (09:31 ET): EST and EDT variants in UTC
-    - cron: "31 14 * * 1-5"
-    - cron: "31 13 * * 1-5"
+  # schedule:
+  #   - cron: "35 21 * * 1-5"
+  #   - cron: "35 20 * * 1-5"
+  #   - cron: "31 14 * * 1-5"
+  #   - cron: "31 13 * * 1-5"
 
 concurrency:
   group: scheduled-trading

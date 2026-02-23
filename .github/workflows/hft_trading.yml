@@ -1,12 +1,11 @@
 name: HFT Trading (Intraday Scalping)
 
+# PAUSED: schedule disabled while portfolio is being reset.
+# Re-enable once new strategy is decided and liquidation is complete.
 on:
-  schedule:
-    # Every 10 minutes during market hours (9:30 AM - 4:00 PM ET)
-    # UTC times: 13:30-20:00 UTC = 9:30-16:00 ET (adjust for DST)
-    # Using 13:00-20:00 UTC to cover 9:00-16:00 ET (slightly wider window)
-    - cron: '*/10 13-20 * * 1-5'  # Every 10 min, 13:00-20:00 UTC, Mon-Fri
-  workflow_dispatch:  # Allow manual triggers
+  workflow_dispatch:  # Manual trigger only
+  # schedule:
+  #   - cron: '*/10 13-20 * * 1-5'
 
 env:
   PYTHONPATH: ${{ github.workspace }}

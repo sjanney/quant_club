@@ -160,6 +160,97 @@ def run_live_trading():
     logger.info("Live trading cycle complete")
 
 
+def run_liquidate_all():
+    """
+    Close every open position at market price.
+    - Longs → market sell
+    - Shorts → market buy-to-cover
+    Logs each order and sends a Discord summary.
+    Safe to run when market is closed: exits with a warning rather than submitting.
+    """
+    logger.info("=" * 60)
+    logger.info("TRADING DESK - LIQUIDATE ALL POSITIONS")
+    logger.info("=" * 60)
+
+    broker = Broker()
+    if not broker.is_configured:
+        logger.error("Broker not configured. Set ALPACA_API_KEY and ALPACA_API_SECRET in .env")
+        return
+
+    if not broker.is_market_open():
+        logger.warning("Market is currently closed — liquidation orders will be queued as DAY orders and fill at open.")
+
+    account = broker.get_account()
+    if not account:
+        logger.error("Could not load account")
+        return
+
+    logger.info("Account equity: $%,.2f  Cash: $%,.2f", account["equity"], account["cash"])
+
+    positions = broker.get_position_details()
+    if not positions:
+        logger.info("No open positions — nothing to liquidate.")
+        send_discord_message("Liquidation run: no open positions found, nothing to do.")
+        return
+
+    logger.info("Found %d open position(s) to close:", len(positions))
+    for p in positions:
+        sign = "LONG" if float(p["quantity"]) > 0 else "SHORT"
+        logger.info("  %s %s qty=%s entry=$%s current=$%s unrealised_pl=$%s",
+                    p["symbol"], sign, p["quantity"],
+                    p["avg_entry_price"], p["current_price"], p["unrealized_pl"])
+
+    order_manager = OrderManager(broker)
+    results = []
+
+    for pos in positions:
+        symbol = pos["symbol"]
+        qty = float(pos["quantity"])
+        if qty == 0:
+            continue
+
+        # Long position → sell; short position → buy to cover
+        if qty > 0:
+            side = OrderSide.BUY if False else OrderSide.SELL  # always SELL for long
+            side = OrderSide.SELL
+            close_qty = Decimal(str(abs(qty)))
+        else:
+            side = OrderSide.BUY
+            close_qty = Decimal(str(abs(qty)))
+
+        order = order_manager.submit_order(
+            symbol=symbol,
+            quantity=close_qty,
+            side=side,
+            order_type=OrderType.MARKET,
+            strategy="Liquidation",
+            reason="full portfolio liquidation",
+        )
+
+        if order and order.broker_order_id:
+            status = "submitted"
+            logger.info("Liquidation order submitted: %s %s %s", symbol, side.value, close_qty)
+        elif order and str(getattr(getattr(order, "status", None), "value", "")) == "rejected":
+            status = f"rejected: {getattr(order, 'reason', 'unknown')}"
+            logger.warning("Liquidation order rejected: %s — %s", symbol, status)
+        else:
+            status = "failed"
+            logger.error("Liquidation order failed: %s", symbol)
+
+        results.append((symbol, side.value, float(close_qty), status))
+
+    submitted = sum(1 for _, _, _, s in results if s == "submitted")
+    failed    = sum(1 for _, _, _, s in results if s not in ("submitted",))
+
+    summary_lines = [f"LIQUIDATION COMPLETE: {submitted} submitted, {failed} failed"]
+    for sym, side, qty, status in results:
+        summary_lines.append(f"  {sym} {side.upper()} {qty:.0f} → {status}")
+
+    full_summary = "\n".join(summary_lines)
+    logger.info(full_summary)
+    send_discord_message(full_summary[:1900])
+
+
 def run_mean_reversion_trading(options: bool = True):
     """
     Run Mean Reversion + VIX Regime strategy with optional options overlays.
@@ -449,9 +540,9 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        choices=["live", "backtest", "monitor", "after-hours", "execute-open", "scheduler", "hft", "mean-reversion"],
+        choices=["live", "backtest", "monitor", "after-hours", "execute-open", "scheduler", "hft", "mean-reversion", "liquidate"],
         default="backtest",
-        help="Operation mode (mean-reversion=new VIX-filtered strategy with options)",
+        help="Operation mode (liquidate=close all open positions at market)",
     )
     parser.add_argument(
         "--dry-run",
@@ -513,6 +604,8 @@ def main():
             run_hft_trading(interval_seconds=args.hft_interval, universe_override=args.hft_universe)
         elif args.mode == "mean-reversion":
             run_mean_reversion_trading(options=use_options)
+        elif args.mode == "liquidate":
+            run_liquidate_all()
         else:
             logger.error(f"Unknown mode: {args.mode}")
     
