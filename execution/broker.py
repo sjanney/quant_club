@@ -7,7 +7,7 @@ Abstracts broker API interactions (Alpaca via alpaca-py).
 import logging
 from decimal import Decimal
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 try:
     from alpaca.trading.client import TradingClient
@@ -17,11 +17,14 @@ try:
         StopOrderRequest,
         StopLimitOrderRequest,
         GetOrdersRequest,
+        GetOptionContractsRequest,
     )
     from alpaca.trading.enums import (
         OrderSide as AlpacaSide,
         TimeInForce,
         QueryOrderStatus,
+        AssetClass,
+        ContractType,
     )
     ALPACA_AVAILABLE = True
 except ImportError:
@@ -327,3 +330,146 @@ class Broker:
         except Exception as e:
             logger.error("Error fetching orders: %s", e)
             return []
+
+    # ------------------------------------------------------------------
+    # Options support
+    # ------------------------------------------------------------------
+
+    def get_option_contracts(
+        self,
+        underlying_symbol: str,
+        contract_type: str = "call",        # "call" or "put"
+        expiration_date_gte: Optional[str] = None,
+        expiration_date_lte: Optional[str] = None,
+        strike_price_gte: Optional[float] = None,
+        strike_price_lte: Optional[float] = None,
+        limit: int = 100,
+    ) -> List[Dict]:
+        """
+        Fetch option contracts for an underlying symbol from Alpaca.
+
+        Returns list of dicts with keys:
+            symbol, name, type, strike_price, expiration_date,
+            close_price, open_interest, tradable
+        """
+        if not self.api:
+            return []
+        if not ALPACA_AVAILABLE:
+            return []
+        try:
+            kwargs: Dict = {
+                "underlying_symbols": [underlying_symbol.upper()],
+                "limit": limit,
+            }
+            if expiration_date_gte:
+                kwargs["expiration_date_gte"] = expiration_date_gte
+            if expiration_date_lte:
+                kwargs["expiration_date_lte"] = expiration_date_lte
+            if strike_price_gte is not None:
+                kwargs["strike_price_gte"] = str(strike_price_gte)
+            if strike_price_lte is not None:
+                kwargs["strike_price_lte"] = str(strike_price_lte)
+            if contract_type.lower() == "call":
+                kwargs["type"] = ContractType.CALL
+            elif contract_type.lower() == "put":
+                kwargs["type"] = ContractType.PUT
+
+            req = GetOptionContractsRequest(**kwargs)
+            resp = self.api.get_option_contracts(req)
+            contracts = getattr(resp, "option_contracts", resp) if resp else []
+            result = []
+            for c in contracts:
+                try:
+                    raw_cp = getattr(c, "close_price", None)
+                    close_price = float(raw_cp) if raw_cp is not None else 0.0
+                    raw_oi = getattr(c, "open_interest", None)
+                    open_interest = int(raw_oi) if raw_oi is not None else 0
+                    result.append({
+                        "symbol": str(c.symbol),
+                        "name": str(getattr(c, "name", "")),
+                        "type": str(getattr(c, "type", contract_type)),
+                        "strike_price": float(getattr(c, "strike_price", 0)),
+                        "expiration_date": str(getattr(c, "expiration_date", "")),
+                        "close_price": close_price,
+                        "open_interest": open_interest,
+                        "tradable": bool(getattr(c, "tradable", True)),
+                    })
+                except Exception:
+                    pass
+            return result
+        except Exception as e:
+            logger.error("Error fetching option contracts for %s: %s", underlying_symbol, e)
+            return []
+
+    def submit_option_order(
+        self,
+        option_symbol: str,
+        qty: int,
+        side: str,           # "buy" or "sell"
+        order_type: str = "limit",
+        limit_price: Optional[float] = None,
+    ) -> Optional[str]:
+        """
+        Submit an options order. Returns broker order ID or None.
+
+        Alpaca options rules:
+        - time_in_force must be "day"
+        - extended_hours must be False
+        - qty must be whole number
+        - notional not allowed
+        """
+        if not self.api:
+            logger.warning("Broker not configured — option order not submitted")
+            return None
+        if qty <= 0:
+            logger.error("Invalid option qty: %d", qty)
+            return None
+
+        alpaca_side = AlpacaSide.BUY if side.lower() == "buy" else AlpacaSide.SELL
+
+        try:
+            if order_type == "market":
+                req = MarketOrderRequest(
+                    symbol=option_symbol.upper(),
+                    qty=qty,
+                    side=alpaca_side,
+                    time_in_force=TimeInForce.DAY,
+                )
+            else:
+                if not limit_price:
+                    logger.error("limit_price required for option limit order")
+                    return None
+                req = LimitOrderRequest(
+                    symbol=option_symbol.upper(),
+                    qty=qty,
+                    side=alpaca_side,
+                    time_in_force=TimeInForce.DAY,
+                    limit_price=round(limit_price, 2),
+                )
+
+            mode = "PAPER" if self._is_paper_trading else "LIVE"
+            logger.info("[%s] Option order: %s %s x%d @ %s",
+                        mode, option_symbol, side.upper(), qty,
+                        f"${limit_price:.2f}" if limit_price else "MKT")
+
+            order = self.api.submit_order(order_data=req)
+            logger.info("Option order submitted: %s", order.id)
+            return str(order.id)
+        except Exception as e:
+            logger.error("Error submitting option order %s: %s", option_symbol, e)
+            return None
+
+    def get_account_options_level(self) -> int:
+        """Return the account's options trading level (0-3). 0 = disabled."""
+        if not self.api:
+            return 0
+        try:
+            account = self.api.get_account()
+            level = getattr(account, "options_trading_level", None)
+            if level is None:
+                # Fallback: check options_approved_level
+                level = getattr(account, "options_approved_level", 0)
+            return int(level) if level is not None else 0
+        except Exception as e:
+            logger.error("Error fetching options level: %s", e)
+            return 0

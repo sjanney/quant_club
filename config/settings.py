@@ -155,6 +155,75 @@ class ScheduleConfig:
 
 
 @dataclass
+class HFTConfig:
+    """High-frequency trading (intraday scalping) configuration — aggressive."""
+    max_trades_per_day: int = 100             # Aggressive: high trade count
+    max_positions: int = 8                    # More concurrent positions
+    position_size_pct: float = 0.08           # 8% base per position (scaled by conviction)
+    min_signal_strength: float = 58.0         # Lower threshold = more trades
+    max_daily_loss_pct: float = 0.03          # 3% daily loss limit
+    bar_interval: str = "1Min"                # 1-minute bars
+    universe: List[str] = field(default_factory=lambda: [
+        "SPY", "QQQ", "AAPL", "MSFT", "TSLA", "NVDA",
+        "AMD", "META", "AMZN", "GOOGL",
+    ])
+    # Exit management
+    stop_loss_atr_mult: float = 1.5           # Initial SL at 1.5x ATR (tightens to 1x when trailing)
+    take_profit_atr_mult: float = 2.5         # Wider TP lets winners run with trailing stop
+    eod_flatten_minutes_before_close: int = 10  # Flatten 10 min before close
+    # Anti-whipsaw
+    cooldown_cycles: int = 3                  # Shorter cooldown: re-enter faster
+    # Signal quality
+    min_confluence: int = 2                   # At least 2 indicators must agree
+
+
+@dataclass
+class MeanReversionConfig:
+    """Mean reversion + VIX regime strategy configuration."""
+    universe: List[str] = field(default_factory=lambda: [
+        "SPY", "QQQ", "AAPL", "MSFT", "NVDA", "AMZN",
+        "GOOGL", "META", "TSLA", "AMD", "JPM", "GS",
+    ])
+    # Include VIX proxy in data fetch for regime filtering
+    vix_symbol: str = "VIXY"           # ETF proxy for VIX (easier to fetch via Alpaca)
+    rsi_period: int = 2
+    bb_period: int = 20
+    roc_period: int = 5
+    roc_z_window: int = 60
+    ema_fast: int = 50
+    ema_slow: int = 200
+    vix_high_threshold: float = 30.0
+    vix_extreme_threshold: float = 40.0
+    # Order sizing
+    notional_pct: float = 0.10         # 10% equity per name
+    max_names: int = 6
+    long_threshold: float = 58.0
+    short_threshold: float = 42.0
+    shortable: List[str] = field(default_factory=lambda: [])  # No shorts by default
+
+
+@dataclass
+class OptionsConfig:
+    """Options overlay configuration."""
+    enabled: bool = True
+    # Score thresholds for directional option buys
+    strong_long_threshold: float = 72.0   # Buy call above this
+    strong_short_threshold: float = 28.0  # Buy put below this
+    # Covered call range (score between these → sell covered call on long)
+    covered_call_min_score: float = 55.0
+    covered_call_max_score: float = 70.0
+    # Contract selection
+    min_dte: int = 7
+    max_dte: int = 21
+    covered_call_max_dte: int = 14       # Shorter DTE for covered calls
+    directional_otm_pct: float = 0.05    # 5% OTM for directional buys
+    covered_call_otm_pct: float = 0.03   # 3% OTM for covered calls
+    # Sizing
+    max_notional_pct: float = 0.02       # Max 2% equity per option trade
+    max_contracts_per_symbol: int = 2    # Max contracts per symbol
+
+
+@dataclass
 class Settings:
     """Main settings class containing all configuration."""
     broker: BrokerConfig = field(default_factory=BrokerConfig)
@@ -165,6 +234,9 @@ class Settings:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     notifications: NotificationConfig = field(default_factory=NotificationConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
+    hft: HFTConfig = field(default_factory=HFTConfig)
+    mean_reversion: MeanReversionConfig = field(default_factory=MeanReversionConfig)
+    options: OptionsConfig = field(default_factory=OptionsConfig)
 
     # Strategy configuration
     active_strategies: List[str] = field(default_factory=list)  # Will be set dynamically

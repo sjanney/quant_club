@@ -98,6 +98,23 @@ python main.py --mode scheduler
 
 **📖 Full details (cron, server, timezone): [SCHEDULER.md](./SCHEDULER.md)**
 
+### HFT Intraday Scalping Strategy
+
+High-frequency intraday scalping strategy for fast execution during market hours:
+
+```bash
+# Single cycle (GitHub Actions)
+python main.py --mode hft
+
+# Continuous loop (local, 60-second interval)
+python main.py --mode hft --hft-interval 60
+
+# Custom universe
+python main.py --mode hft --hft-universe "SPY,QQQ,AAPL"
+```
+
+**📖 Full details: [HFT_STRATEGY.md](./HFT_STRATEGY.md)**
+
 ### GitHub Actions automation
 
 You can run checks and scheduled paper trading in GitHub Actions (public repos are free-tier friendly):
@@ -105,6 +122,7 @@ You can run checks and scheduled paper trading in GitHub Actions (public repos a
 - CI checks: `.github/workflows/ci.yml`
 - Scheduled trading: `.github/workflows/scheduled_trading.yml`
 - Daily health-check (no trades): `.github/workflows/trading_healthcheck.yml`
+- HFT intraday scalping: `.github/workflows/hft_trading.yml` (every 10 min during market hours)
 
 Set repository secrets (Settings → Secrets and variables → Actions):
 
@@ -153,6 +171,11 @@ To see what ran today (logs, daily reports, trade metrics), download the workflo
 - **Multiple Frequencies**: Daily, weekly, monthly rebalancing
 - **Transaction Costs**: Realistic slippage and commission modeling
 - **Performance Metrics**: Comprehensive performance analysis
+
+### Strategies
+- **RAMmageddon**: DRAM shortage thesis (long MU, short OEMs, pairs trade)
+- **Momentum**: Momentum-based strategy
+- **Scalping (HFT)**: Mean reversion intraday scalping with RSI, Bollinger Bands, volume spikes
 
 ### Monitoring
 - **Performance Tracking**: Real-time performance monitoring

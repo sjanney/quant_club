@@ -187,8 +187,12 @@ jobs:
       - name: Check for scheduled orders
         run: |
           if [ ! -f state/scheduled_orders.json ]; then
-            echo "::error::No scheduled-orders artifact found (state/scheduled_orders.json missing). Ensure after-hours ran and the scheduled-orders artifact is available."
-            exit 1
+            if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+              echo "::error::No scheduled-orders artifact found (state/scheduled_orders.json missing). Ensure after-hours ran and the scheduled-orders artifact is available."
+              exit 1
+            else
+              echo "::warning::state/scheduled_orders.json missing (no scheduled-orders artifact). Running execute-open anyway for manual run."
+            fi
           fi
 
       - name: Execute orders at market open
